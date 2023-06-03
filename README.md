@@ -1,69 +1,95 @@
-# a
+# github_action_test
 
-## Build Setup
+Github Actions/Nuxtjs/Docker/EC2
 
-```bash
-# install dependencies
-$ yarn install
+https://www.youtube.com/watch?v=E3i9qt0SS-I&list=LL&index=1
 
-# serve with hot reload at localhost:3000
-$ yarn dev
+<br />
 
-# build for production and launch server
-$ yarn build
-$ yarn start
+## 전체적인 Flow
 
-# generate static project
-$ yarn generate
+1. 로컬 PC 에서 개발을 한 후 Github 에 푸시
+2. 특정 브랜치에 푸시가 되면 (=event trigger) 깃헙 액션이 동작되도록
+3. 깃헙 액션이 Github Container Registry 에 소스를 받은 후 도커 이미지로 빌드
+4. 빌드된 이미지를 EC2 에 등록된 Runner 가 복사
+5. 기존 이미지를 삭제하고 새로운 이미지로 실행
+
+<br />
+<br />
+
+### 1. 도커 파일 생성
+
+도커 파일 생성 -> touch Dockerfile
+
+<br />
+
+`Dockerfile`
+
+```
+FROM node:14.19.0 : nodejs 14.19.0 버전의 이미지를 받아서 docker image를 생성합니다.
+
+RUN mkdir -p /app : app 폴더를 생성합니다.
+WORKDIR /app : app 폴더를 work directory 로 설정
+ADD . /app/ : 현재 폴더의 모든것을 생성된 app 폴더에 복사합니다.
+
+RUN rm ... || true : 파일 삭제. 뒤의 "|| true" 는 파일이 없을 경우 오류로 인해 실행이 중단되지 않게 하기 위해 추가합니다.
+RUN yarn build : nuxt 프로젝트를 빌드합니다.
+
+ENV HOST 0.0.0.0 : 모든 IP를 개방합니다.
+EXPOSE 3000 : 3000번 포트를 개방합니다.
+
+CMD ["yarn", "start"] : yarn start 명령을 실행합니다.
 ```
 
-For detailed explanation on how things work, check out the [documentation](https://nuxtjs.org).
+<br />
+<br />
 
-## Special Directories
+`.dockerignore`
 
-You can create the following extra directories, some of which have special behaviors. Only `pages` is required; you can delete them if you don't want to use their functionality.
+Docker 이미지 생성시 불필요한 파일을 제외하도록 루트 폴더에 .dockerignore 파일을 생성합니다.
 
-### `assets`
+```
+node_modules/
+dist/
+```
 
-The assets directory contains your uncompiled assets such as Stylus or Sass files, images, or fonts.
+<br />
+<br />
 
-More information about the usage of this directory in [the documentation](https://nuxtjs.org/docs/2.x/directory-structure/assets).
+1. Dockerfile을 저장하고 다음 명령으로 이미지를 생성 합니다.
 
-### `components`
+```
+docker build --tag nuxt-auto-deploy:0.0.1 .
+```
 
-The components directory contains your Vue.js components. Components make up the different parts of your page and can be reused and imported into your pages, layouts and even other components.
+뒤의 마지막 . 은 이 프로젝트 전체를 의미합니다.
 
-More information about the usage of this directory in [the documentation](https://nuxtjs.org/docs/2.x/directory-structure/components).
+<br />
 
-### `layouts`
+2. Docker 이미지를 실행합니다.
 
-Layouts are a great help when you want to change the look and feel of your Nuxt app, whether you want to include a sidebar or have distinct layouts for mobile and desktop.
+```
+docker run --name nuxt-auto-deploy -d -p 3000:3000 nuxt-auto-deploy:0.0.1
+```
 
-More information about the usage of this directory in [the documentation](https://nuxtjs.org/docs/2.x/directory-structure/layouts).
+- --name 옵션을 사용하여 컨테이너 이름을 `nuxt-auto-deploy` 로 지정합니다.
+- 뒤의 nuxt-auto-deploy:0.0.1은 docker image명과 tag명입니다.
+- -d 옵션 : 컨테이너를 `백그라운드 모드로 실행하도록 지시`하는 옵션입니다. 컨테이너를 백그라운드에서 실행하면 컨테이너의 출력이 터미널에 표시되지 않고 백그라운드에서 실행됩니다.
 
+```
+docker run -d `이미지명`
+```
 
-### `pages`
+- -p 옵션은 호스트와 컨테이너 사이의 `포트 매핑을 설정`하는 옵션입니다. 예를 들어, -p 3000:3000 옵션을 사용하여 호스트의 3000번 포트와 컨테이너의 3000번 포트를 매핑하면 호스트의 3000번 포트로 접근하면 컨테이너의 3000번 포트로 연결됩니다.
 
-This directory contains your application views and routes. Nuxt will read all the `*.vue` files inside this directory and setup Vue Router automatically.
+```
+docker run -p 3000:3000 `이미지명`
+```
 
-More information about the usage of this directory in [the documentation](https://nuxtjs.org/docs/2.x/get-started/routing).
+<br />
 
-### `plugins`
+3. 도커 실행되는지 확인
 
-The plugins directory contains JavaScript plugins that you want to run before instantiating the root Vue.js Application. This is the place to add Vue plugins and to inject functions or constants. Every time you need to use `Vue.use()`, you should create a file in `plugins/` and add its path to plugins in `nuxt.config.js`.
-
-More information about the usage of this directory in [the documentation](https://nuxtjs.org/docs/2.x/directory-structure/plugins).
-
-### `static`
-
-This directory contains your static files. Each file inside this directory is mapped to `/`.
-
-Example: `/static/robots.txt` is mapped as `/robots.txt`.
-
-More information about the usage of this directory in [the documentation](https://nuxtjs.org/docs/2.x/directory-structure/static).
-
-### `store`
-
-This directory contains your Vuex store files. Creating a file in this directory automatically activates Vuex.
-
-More information about the usage of this directory in [the documentation](https://nuxtjs.org/docs/2.x/directory-structure/store).
+```
+docker ps -a
+```
