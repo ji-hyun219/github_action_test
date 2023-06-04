@@ -213,3 +213,153 @@ build의 step 네 번째는 도커 이미지를 빌드하고 푸시하는 역할
 <br />
 <br />
 <br />
+<br />
+
+### 3. AWS EC2 생성
+
+이제 자동 배포가 적용될 서버를 만듭니다.  
+AWS console에 로그인 한 후 EC2 서비스로 이동합니다.  
+인스턴스를 만들기 전 먼저 `보안그룹 구성`을 클릭해서 설정합니다.
+
+<br />
+<br />
+
+#### `1. 보안그룹 구성`
+
+포트가 서버를 통하는 문의 역할을 하는 만큼, 악성 코드나 바이러스 역시 포트를 통해서 유포됩니다. 그렇기 때문에 IP를 통해 접속한 클라이언트에게 언제나 모든 포트를 개방하는 것은 위험한 요소가 됩니다. 이를 막기 위한 규칙이 `인바운드 규칙`과 `아웃바운드 규칙`입니다.
+
+- `인바운드규칙`  
+  인바운드 규칙은 클라이언트가 자신의 서버 데이터에 들어올 수 있는 규칙을 의미
+
+- `아웃바운드 규칙`  
+  아웃바운드 규칙은 서버에서 나갈 수 있는 (반출할 수 있는) 데이터에 대한 규칙을 의미
+
+저는 인바운드 규칙쪽에 IPv4 버전으로 22, 80번 포트를 추가해주었습니다.
+
+<br />
+<br />
+<br />
+
+#### `2. 인스턴스 연결`
+
+인스턴스 실행이 완료되면 해당 인스턴스를 체크하고 `연결`을 클릭합니다.  
+그 후 `SSH 클라이언트`를 클릭합니다. 그러면 어떻게 해야하는지 가이드가 친절하게 나와있습니다.
+
+저 같은 경우는 다운로드된 키파일을 .ssh 폴더에다가 옮겨주었습니다.
+그 다음 .ssh 폴더에 있는 키파일을 홈 디렉터리 경로에도 복사해두었습니다
+
+```
+mv ~/Downloads/MyKeyPair.pem ~/.ssh/MyKeyPair.pem
+cp ~/.ssh/MyKeyPair.pem ./MyKeyPair.pem
+```
+
+이렇게 되면 키파일 권한이 공개적이어서 프라이빗 권한으로 바꾸어주도록 해야합니다.
+
+- `chmod 400 MyKeyPair.pem(= 키파일명)` 명령을 입력합니다. 이로써 프라이빗 키 파일로 변경되어 사용할 수 있습니다.
+- `ssh -i ...........` 명령을 사용해 ssh 접속 인스턴스 연결을 합니다
+
+<br />
+
+아래와 같이 인스턴스 연결에 성공합니다
+<br />
+
+<img width="577" alt="스크린샷 2023-06-04 오후 6 48 54" src="https://github.com/ji-hyun219/ji-hyun219/assets/91349474/4531c2a0-a643-4a40-96df-f1b3c82e5052">
+
+<br />
+<br />
+<br />
+
+#### `3. AWS 에 도커 설치`
+
+https://docs.aws.amazon.com/ko_kr/AmazonECS/latest/developerguide/create-container-image.html
+
+위와 같이 가이드가 있습니다.
+
+다만 아래 명령으로 도커 엔진을 설치할 떄
+
+```
+sudo amazon-linux-extras install docker
+```
+
+`sudo: amazon-linux-extras: command not found` 와 같은 명령이 발생합니다.
+
+저는 Amazon Linux 2023 AMI 를 쓰고 있었는데 위 명령은 Amazon Linux 2 AMI 명령어에 해당하는 것 같습니다.
+
+아래 명령으로 대신 docker 를 설치하면 됩니다.
+
+```
+sudo yum install -y docker
+```
+
+<br />
+
+도커 엔진 설치 완료 및 가이드를 따라 완료하면 아래 명령으로 도커를 확인해봅시다.
+active 되고 있는 것을 확인할 수 있습니다.
+
+```
+sudo service docker status
+```
+
+<br />
+
+마지막으로 `docker info` 명령을 하는데 이때 에러가 발생합니다. 여기서 `exit` 을 하고(= 로그아웃) 다시 `ssh -i` 명령을 하여 인스턴스에 연결하고 `docker info` 을 하면 성공적으로 동작하는 것을 확인할 수 있습니다.
+
+<br />
+<br />
+<br />
+<br />
+
+### 4. AWS 에 깃헙 러너 설치
+
+github repository의 settings 탭에서 Runner를 선택합니다.
+
+Runners / Create self-hosted runner를 선택하고, Linux를 선택합니다.
+
+여기에 깃헙 러너 설치 가이드가 나와있는데 `.config` 명령으로 구성 시 다음과 같은 에러가 발생합니다
+
+```
+Process terminated. Couldn't find a valid ICU package installed on the system. Please install libicu using your package manager and try again.
+```
+
+이때 아래 첨부된 깃허브 이슈를 참고해 libicu 패키지도 추가 설치해주었더니 해결했습니다.
+
+https://github.com/actions/runner/issues/2511
+
+<br />
+
+그 후, 깃헙 러너 구성을 다음과 같이 해주면 됩니다.
+
+```
+Enter the name of the runner group to add this runner to : 엔터
+Enter the name of runner : 엔터
+Enter any additional label : label-go (워크플로우 yml에 작성했던 라벨명
+Enter name of work folder : 엔터
+```
+
+<br />
+
+다음에는 `./run.sh` 대신 아래 명령을 하여 백그라운드로 실행을 합니다.
+
+```
+nohup ./run.sh &
+```
+
+- `tail -f nohup.out` 명령을 실행하면 ec2상의 빌드 로그를 확인할 수 있습니다.
+
+<br />
+
+Runner 셋팅이 끝나면 github의 Settings - Actions - Runner 메뉴에서 등록된것을 확인할 수 있습니다.
+
+<br />
+<br />
+<br />
+<br />
+
+### 5. 자동 배포 테스트
+
+소스 코드를 수정하고 푸시하면 자동으로 깃헙 액션이 실행됩니다.  
+EC2 인스턴스의 공인 IP를 확인합니다.  
+브라우저에 아이피를 입력하면 배포된 것을 확인 가능합니다.
+
+다음과 같은
+이제 Push를 하면 서버에 자동 배포가 되는 것을 확인할 수 있습니다.
